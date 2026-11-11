@@ -1,0 +1,74 @@
+import { format } from 'date-fns'
+import { GameState, type GameModel } from '../../../database/models/game.model'
+import { GameClassIcon } from '../../../html/components/game-class-icon'
+import { GameLiveIndicator } from '../../../html/components/game-live-indicator'
+import { MapThumbnail } from '../../../html/components/map-thumbnail'
+import type { Tf2ClassName } from '../../../shared/types/tf2-class-name'
+import type { PickDeep } from 'type-fest'
+
+export function GameListItem(props: {
+  game: PickDeep<GameModel, 'number' | 'state' | 'events.0' | 'score' | 'map'>
+  classPlayed?: Tf2ClassName
+}) {
+  const isRunning = [
+    GameState.created,
+    GameState.configuring,
+    GameState.launching,
+    GameState.started,
+  ].includes(props.game.state)
+
+  const launchedAt = props.game.events[0].at
+
+  let gameLabel = <div class="col-span-2"></div>
+  if (props.game.state === GameState.interrupted) {
+    gameLabel = (
+      <div class="game-list-label" data-state="interrupted">
+        force-ended
+      </div>
+    )
+  } else if (props.game.score?.blu !== undefined) {
+    gameLabel = (
+      <>
+        <div class="game-list-label tabular-nums" data-team="blu">
+          blu: {props.game.score.blu}
+        </div>
+        <div class="game-list-label tabular-nums" data-team="red">
+          red: {props.game.score.red}
+        </div>
+      </>
+    )
+  } else if (
+    [GameState.created, GameState.configuring, GameState.launching].includes(props.game.state)
+  ) {
+    gameLabel = (
+      <div class="game-list-label" data-state="launching">
+        {props.game.state}
+      </div>
+    )
+  }
+
+  return (
+    <a class="game-list-item" href={`/games/${props.game.number}`} preload="mousedown">
+      <div class="live-indicator">{isRunning ? <GameLiveIndicator /> : <></>}</div>
+      <span class={['game-number', isRunning && 'text-accent', 'tabular-nums']} safe>
+        #{props.game.number}
+      </span>
+      <span class="map-name" safe>
+        {props.game.map}
+      </span>
+      <span class="launched-at" safe>
+        {format(launchedAt, 'dd.MM.yyyy HH:mm')}
+      </span>
+
+      <div class="game-class-icon">
+        {props.classPlayed && <GameClassIcon gameClass={props.classPlayed} size={32} />}
+      </div>
+
+      {gameLabel}
+
+      <div class="absolute top-0 right-0 bottom-0 left-0 -z-10 overflow-hidden rounded-lg max-sm:left-1/3 xl:left-1/3">
+        <MapThumbnail map={props.game.map} />
+      </div>
+    </a>
+  )
+}

@@ -1,0 +1,108 @@
+@layer components {
+  .button {
+    @apply transition-colors;
+    @apply duration-75;
+
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    padding: 12px 24px;
+    font-size: 16px;
+    line-height: normal;
+    font-weight: 700;
+    border-radius: 4px;
+
+    text-transform: uppercase;
+
+    color: var(--color-ash);
+
+    background-color: var(--color-abru-light-15);
+
+    &:hover {
+      background-color: color-mix(in hsl, var(--color-abru-light-15), black 5%);
+    }
+
+    &:disabled,
+    a&:not([href]) {
+      background-color: var(--color-abru-light-35);
+      color: var(--color-abru-light-60);
+
+      &:hover {
+        background-color: var(--color-abru-light-35);
+        color: var(--color-abru-light-60);
+      }
+    }
+
+    &[data-size='dense'] {
+      padding: 5px 28px;
+      font-size: 16px;
+      line-height: 22px;
+    }
+
+    &[data-variant='accent'] {
+      background-color: var(--color-accent);
+
+      &:hover {
+        background-color: color-mix(in hsl, var(--color-accent), black 10%);
+      }
+
+      &:disabled,
+      a&:not([href]) {
+        background-color: var(--color-accent);
+        color: var(--color-ash);
+
+        &:hover {
+          background-color: var(--color-accent);
+          color: var(--color-ash);
+        }
+      }
+    }
+
+    &[data-variant='alert'] {
+      background-color: var(--color-abru);
+      color: var(--color-alert);
+
+      &:hover {
+        background-color: color-mix(in hsl, var(--color-abru), white 4%);
+      }
+    }
+
+    &[data-variant='darker'] {
+      background-color: var(--color-abru-dark-25);
+      &:hover {
+        background-color: color-mix(in hsl, var(--color-abru-dark-25), black 5%);
+      }
+    }
+
+    &[data-variant='lighter'] {
+      background-color: var(--color-abru-light-85);
+      color: var(--color-abru-light-3);
+
+      &:hover {
+        background-color: color-mix(in hsl, var(--color-abru-light-85), black 5%);
+      }
+
+      &:disabled,
+      a&:not([href]) {
+        background-color: var(--color-abru-light-85);
+        color: var(--color-abru-light-60);
+
+        &:hover {
+          background-color: var(--color-abru-light-85);
+          color: var(--color-abru-light-60);
+        }
+      }
+    }
+
+    &.compact {
+      padding: 8px;
+
+      span {
+        display: none;
+      }
+    }
+  }
+}

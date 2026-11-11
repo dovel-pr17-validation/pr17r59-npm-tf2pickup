@@ -1,0 +1,64 @@
+import { format } from 'date-fns'
+import { type GameModel } from '../../../database/models/game.model'
+import { MapThumbnail } from '../../../html/components/map-thumbnail'
+import type { SteamId64 } from '../../../shared/types/steam-id-64'
+import { GameStateIndicator } from './game-state-indicator'
+import { ConnectInfo } from './connect-info'
+import { LogsLink } from './logs-link'
+import { DemoLink } from './demo-link'
+
+export function GameSummary(props: {
+  game: Pick<
+    GameModel,
+    | 'events'
+    | 'number'
+    | 'map'
+    | 'state'
+    | 'connectString'
+    | 'stvConnectString'
+    | 'slots'
+    | 'gameServer'
+  >
+  actor?: SteamId64 | undefined
+}) {
+  const launchedAt = props.game.events[0].at
+  return (
+    <div
+      id={`game-${props.game.number}-summary`}
+      class="text-abru-light-75 flex flex-col overflow-hidden rounded-lg xl:mr-4"
+      style="grid-area: gameSummary"
+    >
+      <div class="game-summary-caption relative flex min-h-[200px] flex-1 flex-col justify-end px-[10px]">
+        <div class="absolute top-0 right-0 bottom-0 left-0 -z-10">
+          <MapThumbnail map={props.game.map} />
+        </div>
+
+        <div class="game-floating-label text-abru-light-75 top-[10px] left-[10px] tabular-nums">
+          <span safe>#{props.game.number}</span>
+        </div>
+
+        <GameStateIndicator game={props.game} />
+
+        <div class="game-info">
+          <span class="game-info-label">map</span>
+          <span class="game-info-value" safe>
+            {props.game.map}
+          </span>
+        </div>
+      </div>
+
+      <div class="bg-abru-dark-29 flex flex-col gap-[8px] p-[10px]">
+        <div class="game-info">
+          <span class="game-info-label">launched</span>
+          <span class="game-info-value" safe>
+            {format(launchedAt, 'dd.MM.yyyy HH:mm')}
+          </span>
+        </div>
+
+        <ConnectInfo game={props.game} actor={props.actor} />
+        <LogsLink game={props.game} />
+        <DemoLink game={props.game} />
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,91 @@
+import { configuration } from '../../../../configuration'
+import {
+  configurationSchema,
+  type Configuration,
+} from '../../../../database/models/configuration-entry.model'
+import { IconArrowBackUp } from '../../../../html/components/icons'
+import { Admin } from '../../../views/html/admin'
+
+export async function ViewForNerdsPage() {
+  const entries = await Promise.all(
+    configurationSchema._zod.def.options.map(async option => {
+      const _key = option._zod.def.shape.key._zod.def.values[0]!
+      const defaultValue = option._zod.def.shape.value._zod.def.defaultValue
+      const value = await configuration.get(_key)
+      return { _key, value, defaultValue }
+    }),
+  )
+
+  return (
+    <Admin activePage="view-for-nerds">
+      <div class="admin-panel-set">
+        <div class="table w-full max-lg:block">
+          <div class="table-header-group max-lg:hidden">
+            <div class="table-row">
+              <div class="table-cell">Key</div>
+              <div class="table-cell">Value</div>
+            </div>
+          </div>
+
+          <div class="table-row-group max-lg:block max-lg:space-y-4">
+            {entries.map(props => (
+              <ConfigurationEntryEdit {...props} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </Admin>
+  )
+}
+
+export function ConfigurationEntryEdit(props: {
+  _key: keyof Configuration
+  value: unknown
+  defaultValue: unknown
+}) {
+  const valueJson = JSON.stringify(props.value)
+  const isDefault = valueJson === JSON.stringify(props.defaultValue)
+
+  let resetButton = <></>
+  if (!isDefault) {
+    resetButton = (
+      <button
+        class="text-abru-light-60 align-middle"
+        type="button"
+        hx-delete="/admin/view-for-nerds"
+        hx-trigger="click"
+        hx-target="closest form"
+        hx-swap="outerHTML"
+        hx-params="not value"
+      >
+        <span class="sr-only">Reset default</span>
+        <IconArrowBackUp></IconArrowBackUp>
+      </button>
+    )
+  }
+
+  return (
+    <form
+      class="hover:bg-abru-dark-15 table-row max-lg:grid max-lg:grid-cols-[1fr_auto] max-lg:items-center max-lg:gap-x-2"
+      hx-post="/admin/view-for-nerds"
+      hx-swap="outerHTML"
+    >
+      <input type="hidden" name="key" value={props._key} />
+      <div class="text-abru-light-75 table-cell max-lg:col-span-2 max-lg:[overflow-wrap:anywhere]">
+        <label for={`${props._key}-edit`} class={[isDefault && 'font-normal']}>
+          {props._key}
+        </label>
+      </div>
+      <div class="table-cell">
+        <input
+          type="text"
+          name="value"
+          value={valueJson}
+          class="w-full"
+          id={`${props._key}-edit`}
+        />
+      </div>
+      <div class="table-cell align-middle">{resetButton}</div>
+    </form>
+  )
+}

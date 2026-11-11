@@ -1,0 +1,135 @@
+@layer components {
+  .admin-panel-section {
+    font-size: 14px;
+    color: var(--color-abru-light-50);
+    font-weight: 500;
+    padding: 8px 12px;
+
+    @media (width < theme(--breakpoint-lg)) {
+      flex-shrink: 0;
+      align-self: center;
+      white-space: nowrap;
+    }
+
+    &:not(:first-child) {
+      border-top: 1px solid var(--color-abru-light-25);
+      padding-top: 16px;
+      margin-top: 8px;
+
+      @media (width < theme(--breakpoint-lg)) {
+        border-top: none;
+        border-left: 1px solid var(--color-abru-light-25);
+        padding: 8px 12px 8px 16px;
+        margin-top: 0;
+        margin-left: 4px;
+      }
+    }
+  }
+
+  .admin-panel-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+
+    h1 {
+      font-size: 32px;
+      color: var(--color-abru-light-75);
+    }
+  }
+
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+
+    .form-label {
+      font-size: 16px;
+      font-weight: 500;
+    }
+  }
+
+  .admin-panel-link {
+    display: flex;
+    flex-flow: flex nowrap;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-abru-light-75);
+    font-weight: 500;
+    font-size: 18px;
+    border-radius: 4px;
+    padding: 6px 12px;
+    position: relative;
+
+    @media (width < theme(--breakpoint-lg)) {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    &:hover {
+      background-color: color-mix(in hsl, var(--color-abru-dark-25), transparent 80%);
+    }
+
+    &.active {
+      background-color: var(--color-abru-dark-25);
+
+      &:before {
+        position: absolute;
+        left: 4px;
+        top: 4px;
+        content: '';
+        width: 4px;
+        height: calc(100% - 8px);
+        background-color: var(--color-accent);
+        border-radius: 2px;
+
+        @media (width < theme(--breakpoint-lg)) {
+          top: auto;
+          bottom: 0;
+          width: calc(100% - 8px);
+          height: 3px;
+        }
+      }
+    }
+  }
+
+  .admin-panel-content {
+    background-color: var(--color-abru-dark-25);
+    border-radius: 16px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    .group {
+      background-color: var(--color-abru-light-5);
+      border-radius: 8px;
+      padding: 16px;
+      color: var(--color-abru-light-75);
+      font-size: 18px;
+
+      input[type='text'],
+      input[type='number'],
+      input[type='url'] {
+        background-color: var(--color-abru-dark-25);
+        color: var(--color-white);
+        border-radius: 8px;
+        padding: 8px;
+        font-size: 16px;
+        font-weight: 500;
+      }
+
+      .input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .form-label {
+          color: var(--color-abru-light-50);
+          font-size: 16px;
+          font-weight: 500;
+        }
+      }
+    }
+  }
+}

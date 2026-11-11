@@ -1,0 +1,210 @@
+import z from 'zod'
+import { GamePage } from '../../../games/views/html/game.page'
+import { RconConsoleDialog } from '../../../games/views/html/rcon-console-dialog'
+import { games } from '../../../games'
+import { assertIsError } from '../../../utils/assert-is-error'
+import { gameServerSelection } from '../../../games/schemas/game-server-selection'
+import { PlayerRole } from '../../../database/models/player.model'
+import { steamId64 } from '../../../shared/schemas/steam-id-64'
+import { routes } from '../../../utils/routes'
+import { tf2QuickServer } from '../../../tf2-quick-server'
+import { configuration } from '../../../configuration'
+import { Tf2QuickServerList } from '../../../tf2-quick-server/views/html/tf2-quick-server-list'
+import { logger } from '../../../logger'
+import { FlashMessage } from '../../../html/components/flash-message'
+
+// eslint-disable-next-line @typescript-eslint/require-await
+export default routes(async app => {
+  app
+    .get(
+      '/',
+      {
+        schema: {
+          params: z.object({
+            number: games.schemas.gameNumber,
+          }),
+        },
+      },
+      async (request, reply) => {
+        const { number } = request.params
+        await reply.html(GamePage({ number }))
+      },
+    )
+    .put(
+      '/request-substitute',
+      {
+        config: {
+          authorize: [PlayerRole.admin],
+        },
+        schema: {
+          params: z.object({
+            number: games.schemas.gameNumber,
+          }),
+          body: z.object({
+            player: steamId64,
+          }),
+        },
+      },
+      async (request, reply) => {
+        const number = request.params.number
+        const replacee = request.body.player
+
+        await games.requestSubstitute({ number, replacee, actor: request.user!.player.steamId })
+        await reply.status(204).send()
+      },
+    )
+    .put(
+      '/replace-player',
+      {
+        config: {
+          authenticate: true,
+        },
+        schema: {
+          params: z.object({
+            number: games.schemas.gameNumber,
+          }),
+          body: z.object({
+            player: steamId64,
+          }),
+        },
+      },
+      async (request, reply) => {
+        const number = request.params.number
+        const replacee = request.body.player
+        const replacement = request.user!.player.steamId
+
+        await games.replacePlayer({ number, replacee, replacement })
+        await reply.status(204).send()
+      },
+    )
+    .put(
+      '/force-end',
+      {
+        config: {
+          authorize: [PlayerRole.admin],
+        },
+        schema: {
+          params: z.object({
+            number: games.schemas.gameNumber,
+          }),
+        },
+      },
+      async (request, reply) => {
+        await games.forceEnd(request.params.number, request.user!.player.steamId)
+        await reply.status(204).send()
+      },
+    )
+    .put(
+      '/reinitialize-gameserver',
+      {
+        config: {
+          authorize: [PlayerRole.admin],
+        },
+        schema: {
+          params: z.object({
+            number: games.schemas.gameNumber,
+          }),
+        },
+      },
+      async (request, reply) => {
+        await games.requestGameServerReinitialization(
+          request.params.number,
+          request.user!.player.steamId,
+        )
+        await reply.status(204).send()
+      },
+    )
+    .put(
+      '/reassign-gameserver',
+      {
+        config: {
+          authorize: [PlayerRole.admin],
+        },
+        schema: {
+          params: z.object({ number: games.schemas.gameNumber }),
+          body: z.object({
+            gameServer: z.preprocess(val => {
+              try {
+                return JSON.parse(val as string) as unknown
+              } catch {
+                throw new Error('gameServer must be valid JSON')
+              }
+            }, gameServerSelection),
+          }),
+        },
+      },
+      async (request, reply) => {
+        const { number } = request.params
+        const { gameServer } = request.body
+        try {
+          await games.assignAndConfigure(number, gameServer, request.user!.player.steamId)
+        } catch (error) {
+          logger.error(error)
+          assertIsError(error)
+          await reply
+            .header('HX-Reswap', 'none')
+            .html(<FlashMessage type="error" message={error.message} />)
+          return
+        }
+        await reply
+          .trigger({ close: { target: '#choose-game-server-dialog' } })
+          .status(204)
+          .send()
+      },
+    )
+    .post(
+      '/rcon',
+      {
+        config: {
+          authorize: [PlayerRole.admin],
+        },
+        schema: {
+          params: z.object({
+            number: games.schemas.gameNumber,
+          }),
+          body: z.object({
+            command: z.string().trim().min(1).max(1024),
+          }),
+        },
+      },
+      async (request, reply) => {
+        const { number } = request.params
+        const { command } = request.body
+        try {
+          const response = await games.executeRconCommand(
+            number,
+            command,
+            request.user!.player.steamId,
+          )
+          await reply.html(RconConsoleDialog.entry({ command, response }))
+        } catch (error) {
+          logger.error(error)
+          assertIsError(error)
+          await reply.html(RconConsoleDialog.entry({ command, error: error.message }))
+        }
+      },
+    )
+    .get(
+      '/tf2-quick-server-list',
+      {
+        config: {
+          authorize: [PlayerRole.admin],
+        },
+        schema: {
+          params: z.object({ number: games.schemas.gameNumber }),
+        },
+      },
+      async (_request, reply) => {
+        try {
+          const servers = await tf2QuickServer.listFree()
+          const defaultRegion = await configuration.get('tf2_quick_server.region')
+          await reply.html(Tf2QuickServerList({ servers, defaultRegion }))
+        } catch (error) {
+          logger.error(error)
+          await reply.html(
+            <span class="text-red-400">Failed to load TF2 Quick Servers. Please try again.</span>,
+          )
+        }
+      },
+    )
+})

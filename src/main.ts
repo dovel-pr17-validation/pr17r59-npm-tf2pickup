@@ -1,0 +1,181 @@
+import './otel'
+import './migrate'
+import fastify from 'fastify'
+import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
+import { resolve } from 'node:path'
+import { logger, logger as loggerInstance } from './logger'
+import { secrets } from './secrets'
+import { environment } from './environment'
+import { version } from './version'
+import { realIp } from './utils/real-ip'
+import { logError } from './utils/log-error'
+import { ErrorPage } from './error-pages/views/html/error.page'
+import { secondsInWeek } from 'date-fns/constants'
+import autoload from '@fastify/autoload'
+import { isTestAuthSecret } from './auth/is-test-auth-secret'
+
+const app = fastify({
+  loggerInstance,
+  trustProxy: environment.TRUST_PROXY,
+  // Bind the client IP into the per-request child logger so every request-scoped
+  // log line (notably fastify's "request completed") is attributable to an IP.
+  childLoggerFactory: (parent, bindings, childLoggerOpts, rawReq) =>
+    parent.child({ ...bindings, 'req.clientIp': realIp(rawReq) }, childLoggerOpts),
+})
+
+app.setSerializerCompiler(serializerCompiler)
+app.setValidatorCompiler(validatorCompiler)
+
+logger.info(`starting tf2pickup.org ${version}`)
+
+if (!environment.CI) {
+  await app.register(await import('@fastify/rate-limit'), {
+    keyGenerator: req => realIp(req),
+    // /auth/test hands the AI playground's bots and agents a cookie with the test auth secret
+    allowList: environment.TEST_AUTH_SECRET
+      ? req => {
+          const value = req.headers.cookie?.match(/(?:^|;\s*)test-auth-secret=([^;]*)/)?.[1]
+          try {
+            return isTestAuthSecret(value && decodeURIComponent(value))
+          } catch {
+            return false
+          }
+        }
+      : [],
+  })
+}
+
+await app.register(await import('@fastify/helmet'), {
+  contentSecurityPolicy:
+    environment.NODE_ENV === 'production'
+      ? {
+          directives: {
+            'script-src': ["'self'"],
+            'script-src-elem': [
+              "'self'",
+              "'unsafe-inline'",
+              ...(environment.UMAMI_SCRIPT_SRC
+                ? [new URL(environment.UMAMI_SCRIPT_SRC).origin]
+                : []),
+              ...(environment.UMAMI_RECORDER_SCRIPT_SRC
+                ? [new URL(environment.UMAMI_RECORDER_SCRIPT_SRC).origin]
+                : []),
+            ],
+            'script-src-attr': ["'unsafe-inline'"],
+            'img-src': [
+              "'self'",
+              'https://mapthumbnails.tf2pickup.org',
+              'https://steamcdn-a.akamaihd.net',
+              'https://avatars.akamai.steamstatic.com',
+              'https://avatars.steamstatic.com',
+              'https://static-cdn.jtvnw.net',
+              'https://cdn.discordapp.com',
+            ],
+            'connect-src': [
+              "'self'",
+              ...(environment.UMAMI_SCRIPT_SRC
+                ? [new URL(environment.UMAMI_SCRIPT_SRC).origin]
+                : []),
+              ...(environment.UMAMI_RECORDER_SCRIPT_SRC
+                ? [new URL(environment.UMAMI_RECORDER_SCRIPT_SRC).origin]
+                : []),
+            ],
+          },
+        }
+      : false,
+})
+await app.register(await import('@fastify/sensible'))
+await app.register(await import('@fastify/static'), {
+  root: [
+    ...(environment.WEBSITE_BRANDING
+      ? [resolve(import.meta.dirname, '..', 'public', 'branding', environment.WEBSITE_BRANDING)]
+      : []),
+    resolve(import.meta.dirname, '..', 'public'),
+  ],
+  prefix: '/',
+})
+await app.register(await import('@fastify/formbody'))
+await app.register(await import('@fastify/multipart'))
+await app.register(await import('@fastify/secure-session'), {
+  key: await secrets.get('session'),
+  expiry: secondsInWeek, // 1 week
+  cookie: {
+    path: '/',
+    maxAge: secondsInWeek,
+    httpOnly: true,
+    secure: environment.NODE_ENV === 'production',
+  },
+})
+await app.register((await import('@fastify/flash')).default)
+await app.register(await import('@fastify/request-context'))
+await app.register(await import('@fastify/accepts'))
+await app.register((await import('@kitajs/fastify-html-plugin')).default)
+
+app.addHook('onSend', async (request, reply) => {
+  if (request.url.startsWith('/api/')) {
+    reply.header('Access-Control-Allow-Origin', '*')
+  }
+})
+
+app.setErrorHandler((error, request, reply) => {
+  if (!(error instanceof Error)) {
+    logger.error(error)
+    return
+  }
+
+  let statusCode = 500
+  let message = 'Internal Server Error'
+  if ('statusCode' in error && typeof error.statusCode === 'number') {
+    statusCode = error.statusCode
+    message = error.message
+  }
+
+  logError(error)
+
+  const accept = request.accepts()
+  switch (accept.type(['json', 'html'])) {
+    case 'json':
+      return reply.type('application/json').code(statusCode).send({ message })
+    case 'html':
+      return reply.code(statusCode).html(ErrorPage({ statusCode, message }))
+    default:
+      return reply.code(406).send('Not Acceptable')
+  }
+})
+
+app.setNotFoundHandler(async (request, reply) => {
+  const accept = request.accepts()
+  switch (accept.type(['json', 'html'])) {
+    case 'json':
+      return reply.type('application/json').code(404).send({ message: 'Not found' })
+    case 'html':
+      return reply.code(404).html(ErrorPage({ statusCode: 404, message: 'Not found' }))
+    default:
+      return reply.code(406).send('Not Acceptable')
+  }
+})
+
+await app.register((await import('./websocket')).default)
+
+await app.register(autoload, {
+  dir: resolve(import.meta.dirname, '.'),
+  matchFilter: path => {
+    return path.includes('/plugins/') && !path.includes('.test.')
+  },
+})
+
+await app.register(autoload, {
+  dir: resolve(import.meta.dirname, '.'),
+  matchFilter: path => {
+    return path.includes('/middleware/') && !path.includes('.test.')
+  },
+})
+
+await app.register(autoload, {
+  dir: resolve(import.meta.dirname, 'routes'),
+  dirNameRoutePrefix: true,
+  scriptPattern: /(?:(?:^.?|\.[^d]|[^.]d|[^.][^d])\.ts|\.js|\.cjs|\.mjs|\.cts|\.mts|\.tsx?)$/,
+  matchFilter: path => !path.includes('/dto/') && !path.includes('.test.'),
+})
+
+await app.listen({ host: environment.APP_HOST, port: environment.APP_PORT })

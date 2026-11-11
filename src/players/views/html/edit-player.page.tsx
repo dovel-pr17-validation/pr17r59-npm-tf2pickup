@@ -1,0 +1,620 @@
+import { resolve } from 'node:path'
+import { PlayerRole, type PlayerBan, type PlayerModel } from '../../../database/models/player.model'
+import { Layout } from '../../../html/layout'
+import { NavigationBar } from '../../../html/components/navigation-bar'
+import { Page } from '../../../html/components/page'
+import { Footer } from '../../../html/components/footer'
+import {
+  AdminPanel,
+  AdminPanelBody,
+  AdminPanelHeader,
+  AdminPanelLink,
+  AdminPanelSection,
+  AdminPanelSidebar,
+} from '../../../html/components/admin-panel'
+import {
+  IconAirTrafficControl,
+  IconAlertSquareRounded,
+  IconArrowBackUp,
+  IconBan,
+  IconChartArrowsVertical,
+  IconDeviceFloppy,
+  IconHeadset,
+  IconMessageCircleOff,
+  IconPlus,
+  IconUserScan,
+  IconX,
+} from '../../../html/components/icons'
+import { GameClassIcon } from '../../../html/components/game-class-icon'
+import { playerAvatarUrl } from '../../../shared/player-avatar-url'
+import { queue } from '../../../queue-auto'
+import { defaultElo, provisionalThreshold } from '../../../games/calculate-elo-updates'
+import type { Children } from '@kitajs/html'
+import {
+  format,
+  formatDuration,
+  hoursToMilliseconds,
+  milliseconds,
+  millisecondsToHours,
+  millisecondsToMinutes,
+  minutesToMilliseconds,
+} from 'date-fns'
+import { isBot } from '../../../shared/types/bot'
+import { makeTitle } from '../../../html/make-title'
+import { EloHistoryChart } from './elo-history-chart'
+import { environment } from '../../../environment'
+import { configuration } from '../../../configuration'
+import type { SteamId64 } from '../../../shared/types/steam-id-64'
+import { players } from '../..'
+import { requestContext } from '@fastify/request-context'
+import { isVerificationEnabled } from '../../../mumble/is-verification-enabled'
+import { MumbleVerificationMethod } from '../../../database/models/player.model'
+
+const editPlayerPages = {
+  '/profile': 'Profile',
+  '/bans': 'Bans',
+  '/chat-mutes': 'Chat mutes',
+  '/roles': 'Roles',
+  '/elo': 'ELO',
+  '/mumble': 'Mumble',
+} as const
+
+export async function EditPlayerProfilePage(props: { steamId: SteamId64 }) {
+  const player = await players.bySteamId(props.steamId, [
+    'name',
+    'steamId',
+    'avatar.large',
+    'cooldownLevel',
+    'nameHistory',
+  ])
+  return (
+    <EditPlayer player={player} activePage="/profile">
+      <form action="" method="post">
+        <div class="admin-panel-set">
+          <div class="grid grid-cols-1 gap-y-4 lg:grid-cols-[1fr_184px]">
+            <div class="input-group">
+              <label class="form-label" for="player-nickname">
+                Nickname
+              </label>
+              <input type="text" name="name" value={player.name} id="player-nickname" />
+              <NicknameHistoryOverview nameHistory={player.nameHistory ?? []} />
+            </div>
+
+            <div class="max-lg:order-first max-lg:justify-self-center lg:row-span-3">
+              <img
+                src={playerAvatarUrl(player.avatar, 'large')}
+                width="184"
+                height="184"
+                class="player-avatar rounded-sm"
+                alt={`${player.name}'s avatar`}
+              />
+            </div>
+
+            <div class="input-group">
+              <label class="form-label" for="cooldown-level">
+                Cooldown level
+              </label>
+              <input
+                type="number"
+                name="cooldownLevel"
+                value={player.cooldownLevel.toString()}
+                id="cooldown-level"
+                min="0"
+              />
+              <CooldownLevelsOverview />
+            </div>
+
+            <div class="self-end">
+              <button
+                type="submit"
+                class="button"
+                data-variant="accent"
+                data-size="dense"
+                data-umami-event="save-player-profile"
+                data-umami-event-player={player.steamId}
+              >
+                <IconDeviceFloppy size={20} />
+                <span>Save</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </EditPlayer>
+  )
+}
+
+export async function EditPlayerBansPage(props: { steamId: SteamId64 }) {
+  const player = await players.bySteamId(props.steamId, ['bans', 'name', 'steamId'])
+  const bans = player.bans?.toSorted((a, b) => b.start.getTime() - a.start.getTime())
+  return (
+    <EditPlayer
+      player={player}
+      activePage="/bans"
+      action={
+        <a href={`/players/${player.steamId}/edit/bans/add`} class="button" data-variant="accent">
+          <IconPlus />
+          Add ban
+        </a>
+      }
+    >
+      <div class="admin-panel-content">
+        {bans?.length ? (
+          <>
+            <div class="edit-player-ban-list">
+              {bans.map(ban => (
+                <BanDetails player={player} ban={ban} />
+              ))}
+            </div>
+          </>
+        ) : (
+          <span class="text-abru-light-75 italic">No bans</span>
+        )}
+      </div>
+    </EditPlayer>
+  )
+}
+
+export async function EditPlayerChatMutesPage(props: { steamId: SteamId64 }) {
+  const player = await players.bySteamId(props.steamId, ['chatMutes', 'name', 'steamId'])
+  const chatMutes = player.chatMutes?.toSorted((a, b) => b.start.getTime() - a.start.getTime())
+  return (
+    <EditPlayer
+      player={player}
+      activePage="/chat-mutes"
+      action={
+        <a
+          href={`/players/${player.steamId}/edit/chat-mutes/add`}
+          class="button"
+          data-variant="accent"
+        >
+          <IconPlus />
+          Add mute
+        </a>
+      }
+    >
+      <div class="admin-panel-content">
+        {chatMutes?.length ? (
+          <div class="edit-player-ban-list">
+            {chatMutes.map(chatMute => (
+              <ChatMuteDetails player={player} chatMute={chatMute} />
+            ))}
+          </div>
+        ) : (
+          <span class="text-abru-light-75 italic">No chat mutes</span>
+        )}
+      </div>
+    </EditPlayer>
+  )
+}
+
+export async function EditPlayerRolesPage(props: { steamId: SteamId64 }) {
+  const player = await players.bySteamId(props.steamId, ['roles', 'name', 'steamId'])
+  const roles = player.roles
+  const safeWebsiteName = environment.WEBSITE_NAME
+  return (
+    <EditPlayer player={player} activePage="/roles">
+      <form action="" method="post">
+        <div class="admin-panel-set">
+          <div class="form-checkbox">
+            <input
+              type="checkbox"
+              name="roles"
+              value={PlayerRole.admin}
+              id="playerRoleAdmin"
+              checked={roles.includes(PlayerRole.admin)}
+            />
+            <label for="playerRoleAdmin">Admin</label>
+            <p class="description">
+              Admins are able to edit players' skill and their profiles as well as modify{' '}
+              {safeWebsiteName} configuration options.
+            </p>
+          </div>
+
+          <div class="form-checkbox">
+            <input
+              type="checkbox"
+              name="roles"
+              value={PlayerRole.superUser}
+              id="playerRoleSuperUser"
+              checked={roles.includes(PlayerRole.superUser)}
+            />
+            <label for="playerRoleSuperUser">Super-user</label>
+            <p class="description">
+              Super-users can edit player's roles and access player action logs.
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            class="button"
+            data-variant="accent"
+            data-size="dense"
+            data-umami-event="save-player-roles"
+            data-umami-event-player={player.steamId}
+          >
+            <IconDeviceFloppy size={20} />
+            <span>Save</span>
+          </button>
+        </div>
+      </form>
+    </EditPlayer>
+  )
+}
+
+export async function EditPlayerEloPage(props: { steamId: SteamId64 }) {
+  const player = await players.bySteamId(props.steamId, ['name', 'steamId', 'elo', 'stats'])
+  return (
+    <EditPlayer player={player} activePage="/elo">
+      <div class="admin-panel-content">
+        <p class="bg-abru-dark-25 text-abru-light-75 mb-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm">
+          <IconAlertSquareRounded size={20} />
+          <span>
+            ELO should aim at {defaultElo} when the games are properly balanced — values drifting
+            away from it suggest unbalanced games.
+          </span>
+        </p>
+        <table class="w-full text-sm text-white">
+          <thead>
+            <tr class="text-abru-light-75 border-abru-light-15 border-b text-left font-light">
+              <th class="pb-2 font-light">Class</th>
+              <th class="pb-2 font-light">ELO</th>
+              <th class="pb-2 font-light">Games</th>
+              <th class="pb-2 font-light">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {queue.config.classes.map(({ name: gameClass }) => {
+              const elo = player.elo?.[gameClass]
+              const games = player.stats.gamesByClass[gameClass] ?? 0
+              const provisional = games < provisionalThreshold
+              return (
+                <tr class="border-abru-light-10 border-b last:border-0">
+                  <td class="py-2">
+                    <div class="flex items-center gap-2">
+                      <GameClassIcon gameClass={gameClass} size={20} />
+                      <span class="capitalize">{gameClass}</span>
+                    </div>
+                  </td>
+                  <td class="py-2 font-bold">{elo ?? defaultElo}</td>
+                  <td class="text-abru-light-75 py-2">{games}</td>
+                  <td class="py-2">
+                    {games === 0 ? (
+                      <span class="text-abru-light-50">—</span>
+                    ) : provisional ? (
+                      <span class="text-yellow-400">Provisional</span>
+                    ) : (
+                      <span class="text-green-400">Established</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <EloHistoryChart steamId={props.steamId} />
+      </div>
+    </EditPlayer>
+  )
+}
+
+export async function EditPlayerMumblePage(props: { steamId: SteamId64 }) {
+  const player = await players.bySteamId(props.steamId, ['name', 'steamId', 'mumbleCertificate'])
+  const certificate = player.mumbleCertificate
+  return (
+    <EditPlayer player={player} activePage="/mumble">
+      <div class="admin-panel-set flex flex-col gap-4">
+        {certificate ? (
+          <>
+            <dl class="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+              <dt>Certificate</dt>
+              <dd class="font-mono break-all" safe>
+                {certificate.hash}
+              </dd>
+              <dt>Linked</dt>
+              <dd safe>{format(certificate.boundAt, 'MMMM d, yyyy HH:mm')}</dd>
+              <dt>Linked by</dt>
+              <dd>
+                {certificate.method === MumbleVerificationMethod.ipMatch
+                  ? 'IP match'
+                  : 'verification code'}
+              </dd>
+            </dl>
+            <p>
+              Unlinking takes the player's access to game channels away. They can link a certificate
+              again on their own.
+            </p>
+            <form action={`/players/${player.steamId}/edit/mumble/unlink`} method="post">
+              <button
+                type="submit"
+                class="button self-start"
+                data-variant="accent"
+                data-size="dense"
+                data-umami-event="unlink-mumble-certificate"
+                data-umami-event-player={player.steamId}
+              >
+                <IconX size={20} />
+                <span>Unlink certificate</span>
+              </button>
+            </form>
+          </>
+        ) : (
+          <p>No Mumble certificate is linked to this player.</p>
+        )}
+      </div>
+    </EditPlayer>
+  )
+}
+
+async function EditPlayer(props: {
+  player: Pick<PlayerModel, 'name' | 'steamId'>
+  children: Children
+  activePage: keyof typeof editPlayerPages
+  action?: Children
+}) {
+  const user = requestContext.get('user')!
+  const safeName = props.player.name
+  return (
+    <Layout
+      title={makeTitle(`Edit ${props.player.name}`)}
+      embedStyle={resolve(import.meta.dirname, 'edit-player.page.css')}
+    >
+      <NavigationBar />
+      <Page>
+        <AdminPanel>
+          <AdminPanelSidebar>
+            <AdminPanelSection>Edit player: {safeName}</AdminPanelSection>
+            <AdminPanelLink href={`/players/${props.player.steamId}`}>
+              <IconArrowBackUp />
+              Back
+            </AdminPanelLink>
+            <AdminPanelLink
+              href={`/players/${props.player.steamId}/edit/profile`}
+              active={props.activePage === '/profile'}
+            >
+              <IconUserScan />
+              Profile
+            </AdminPanelLink>
+            <AdminPanelLink
+              href={`/players/${props.player.steamId}/edit/bans`}
+              active={props.activePage === '/bans'}
+            >
+              <IconBan />
+              Bans
+            </AdminPanelLink>
+            <AdminPanelLink
+              href={`/players/${props.player.steamId}/edit/chat-mutes`}
+              active={props.activePage === '/chat-mutes'}
+            >
+              <IconMessageCircleOff />
+              Chat mutes
+            </AdminPanelLink>
+            <AdminPanelLink
+              href={`/players/${props.player.steamId}/edit/elo`}
+              active={props.activePage === '/elo'}
+            >
+              <IconChartArrowsVertical />
+              ELO
+            </AdminPanelLink>
+            {(await isVerificationEnabled()) && (
+              <AdminPanelLink
+                href={`/players/${props.player.steamId}/edit/mumble`}
+                active={props.activePage === '/mumble'}
+              >
+                <IconHeadset />
+                Mumble
+              </AdminPanelLink>
+            )}
+
+            {user.player.roles.includes(PlayerRole.superUser) && (
+              <>
+                <AdminPanelSection>Super-user</AdminPanelSection>
+                <AdminPanelLink
+                  href={`/players/${props.player.steamId}/edit/roles`}
+                  active={props.activePage === '/roles'}
+                >
+                  <IconAirTrafficControl />
+                  Roles
+                </AdminPanelLink>
+              </>
+            )}
+          </AdminPanelSidebar>
+          <AdminPanelBody>
+            <div class="admin-panel-header">
+              <AdminPanelHeader>{editPlayerPages[props.activePage]}</AdminPanelHeader>
+              {props.action ?? <></>}
+            </div>
+            {props.children}
+          </AdminPanelBody>
+        </AdminPanel>
+      </Page>
+      <Footer />
+    </Layout>
+  )
+}
+
+export async function BanDetails(props: {
+  player: Pick<PlayerModel, 'name' | 'steamId'>
+  ban: PlayerBan
+}) {
+  let actorDesc: JSX.Element
+  if (isBot(props.ban.actor)) {
+    actorDesc = <>bot</>
+  } else {
+    const actor = await players.bySteamId(props.ban.actor, ['name', 'steamId'])
+    actorDesc = (
+      <a href={`/players/${actor.steamId}`} safe>
+        {actor.name}
+      </a>
+    )
+  }
+
+  return (
+    <div class="ban-item group" id={`player-ban-${props.ban.start.getTime().toString()}`}>
+      <form class="contents">
+        <div class="col-span-3">
+          <span class="me-2 text-2xl font-bold" safe>
+            {props.ban.reason}
+          </span>
+          <span class="text-sm">
+            by {actorDesc}
+            {props.ban.anonymous && <span class="italic"> (anonymous)</span>}
+          </span>
+        </div>
+
+        <div class="row-span-2 flex items-center">
+          {props.ban.end > new Date() ? (
+            <button
+              class="button"
+              data-variant="darker"
+              data-umami-event="revoke-ban"
+              data-umami-event-player={props.player.steamId}
+              hx-put={`/players/${props.player.steamId}/edit/bans/${props.ban.start.getTime().toString()}/revoke`}
+              hx-trigger="click"
+              hx-target={`#player-ban-${props.ban.start.getTime().toString()}`}
+              hx-swap="outerHTML"
+            >
+              <IconX />
+              <span class="sr-only">Revoke ban</span>
+            </button>
+          ) : (
+            <></>
+          )}
+        </div>
+
+        <span class="text-base">
+          Starts: <strong safe>{format(props.ban.start, 'MMMM dd, yyyy, HH:mm')}</strong>
+        </span>
+
+        <span class="text-base">
+          Ends: <strong safe>{format(props.ban.end, 'MMMM dd, yyyy, HH:mm')}</strong>
+        </span>
+      </form>
+    </div>
+  )
+}
+
+export async function ChatMuteDetails(props: {
+  player: Pick<PlayerModel, 'name' | 'steamId'>
+  chatMute: PlayerBan
+}) {
+  let actorDesc: JSX.Element
+  if (isBot(props.chatMute.actor)) {
+    actorDesc = <>bot</>
+  } else {
+    const actor = await players.bySteamId(props.chatMute.actor, ['name', 'steamId'])
+    actorDesc = (
+      <a href={`/players/${actor.steamId}`} safe>
+        {actor.name}
+      </a>
+    )
+  }
+
+  return (
+    <div
+      class="ban-item group"
+      id={`player-chat-mute-${props.chatMute.start.getTime().toString()}`}
+    >
+      <form class="contents">
+        <div class="col-span-3">
+          <span class="me-2 text-2xl font-bold" safe>
+            {props.chatMute.reason}
+          </span>
+          <span class="text-sm">by {actorDesc}</span>
+        </div>
+
+        <div class="row-span-2 flex items-center">
+          {props.chatMute.end > new Date() ? (
+            <button
+              class="button"
+              data-variant="darker"
+              data-umami-event="revoke-chat-mute"
+              data-umami-event-player={props.player.steamId}
+              hx-put={`/players/${props.player.steamId}/edit/chat-mutes/${props.chatMute.start.getTime().toString()}/revoke`}
+              hx-trigger="click"
+              hx-target={`#player-chat-mute-${props.chatMute.start.getTime().toString()}`}
+              hx-swap="outerHTML"
+            >
+              <IconX />
+              <span class="sr-only">Revoke mute</span>
+            </button>
+          ) : (
+            <></>
+          )}
+        </div>
+
+        <span class="text-base">
+          Starts: <strong safe>{format(props.chatMute.start, 'MMMM dd, yyyy, HH:mm')}</strong>
+        </span>
+
+        <span class="text-base">
+          Ends: <strong safe>{format(props.chatMute.end, 'MMMM dd, yyyy, HH:mm')}</strong>
+        </span>
+      </form>
+    </div>
+  )
+}
+
+async function CooldownLevelsOverview() {
+  const cooldownLevels = await configuration.get('games.cooldown_levels')
+  return (
+    <details>
+      <summary>Cooldown levels</summary>
+      <ul class="grid grid-cols-[auto_1fr] gap-x-1">
+        {cooldownLevels.map(({ level, banLengthMs }) => {
+          const years = Math.floor(banLengthMs / milliseconds({ years: 1 }))
+          banLengthMs -= milliseconds({ years })
+          const months = Math.floor(banLengthMs / milliseconds({ months: 1 }))
+          banLengthMs -= milliseconds({ months })
+          const weeks = Math.floor(banLengthMs / milliseconds({ weeks: 1 }))
+          banLengthMs -= milliseconds({ weeks })
+          const days = Math.floor(banLengthMs / milliseconds({ days: 1 }))
+          banLengthMs -= milliseconds({ days })
+          const hours = millisecondsToHours(banLengthMs)
+          banLengthMs -= hoursToMilliseconds(hours)
+          const minutes = millisecondsToMinutes(banLengthMs)
+          banLengthMs -= minutesToMilliseconds(minutes)
+          const seconds = millisecondsToHours(banLengthMs)
+
+          const safeDuration = formatDuration({
+            years,
+            months,
+            weeks,
+            days,
+            hours,
+            minutes,
+            seconds,
+          })
+          return (
+            <li class="col-span-2 grid grid-cols-subgrid">
+              <strong class="text-end">{level}:</strong> <p>{safeDuration}</p>
+            </li>
+          )
+        })}
+      </ul>
+    </details>
+  )
+}
+
+function NicknameHistoryOverview(props: { nameHistory: NonNullable<PlayerModel['nameHistory']> }) {
+  const sorted = props.nameHistory.toSorted((a, b) => b.changedAt.getTime() - a.changedAt.getTime())
+  return (
+    <details>
+      <summary>Nickname history</summary>
+      {sorted.length > 0 ? (
+        <ul class="mt-1 grid grid-cols-[1fr_auto] gap-x-2 gap-y-0.5">
+          {sorted.map(entry => (
+            <li class="col-span-2 grid grid-cols-subgrid">
+              <span safe>{entry.name}</span>
+              <span class="text-abru-light-75 text-sm" safe>
+                {format(entry.changedAt, 'yyyy-MM-dd HH:mm')}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="text-abru-light-75 italic">No nickname history</p>
+      )}
+    </details>
+  )
+}

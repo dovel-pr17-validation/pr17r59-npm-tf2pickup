@@ -1,0 +1,99 @@
+import { resolve } from 'node:path'
+import { Layout } from '../../../html/layout'
+import { NavigationBar } from '../../../html/components/navigation-bar'
+import { Page } from '../../../html/components/page'
+import { Footer } from '../../../html/components/footer'
+import { collections } from '../../../database/collections'
+import { Tf2ClassName } from '../../../shared/types/tf2-class-name'
+import type { PlayerModel } from '../../../database/models/player.model'
+import { playerAvatarUrl } from '../../../shared/player-avatar-url'
+import { IconAwardFilled } from '../../../html/components/icons'
+import { makeTitle } from '../../../html/make-title'
+
+interface HallOfFameEntry {
+  player: PlayerModel
+  count: number
+}
+
+export async function HallOfFamePage() {
+  const [all, medics] = await Promise.all([getMostActiveOverall(), getMostActiveMedics()])
+
+  return (
+    <Layout
+      title={makeTitle('Hall of fame')}
+      description="Hall of fame"
+      canonical="/hall-of-fame"
+      embedStyle={resolve(import.meta.dirname, 'hall-of-fame.page.css')}
+    >
+      <NavigationBar />
+      <Page>
+        <div class="container mx-auto grid grid-cols-1 gap-x-4 gap-y-2 p-2 lg:grid-cols-2 lg:gap-y-0 lg:p-0">
+          <div class="text-abru-light-75 my-9 text-[48px] font-bold lg:col-span-2">
+            Hall of Fame
+          </div>
+
+          <Board title="All classes" entries={all} />
+          <Board title="Medics" entries={medics} />
+        </div>
+      </Page>
+      <Footer />
+    </Layout>
+  )
+}
+
+function Board(props: { title: string; entries: HallOfFameEntry[] }) {
+  return (
+    <div class="hof-board">
+      <div class="title col-span-4" safe>
+        {props.title}
+      </div>
+      {props.entries.map((record, i) => (
+        <a class="hof-record" href={`/players/${record.player.steamId}`} preload="mousedown">
+          <MaybeAward i={i} />
+          <img
+            src={playerAvatarUrl(record.player.avatar, 'medium')}
+            width="64"
+            height="64"
+            class="h-[38px] w-[38px]"
+            alt="{name}'s avatar"
+          />
+          <span safe>{record.player.name}</span>
+          <span class="justify-self-end">{record.count}</span>
+        </a>
+      ))}
+    </div>
+  )
+}
+
+function MaybeAward(props: { i: number }) {
+  switch (props.i) {
+    case 0:
+      return <IconAwardFilled size={32} class="text-place-1st place-self-center"></IconAwardFilled>
+    case 1:
+      return <IconAwardFilled size={32} class="text-place-2nd place-self-center"></IconAwardFilled>
+    case 2:
+      return <IconAwardFilled size={32} class="text-place-3rd place-self-center"></IconAwardFilled>
+    default:
+      return <span class="place-self-center">{props.i + 1}.</span>
+  }
+}
+
+async function getMostActiveOverall(): Promise<HallOfFameEntry[]> {
+  const players = await collections.players
+    .find({ 'stats.totalGames': { $gt: 0 } }, { sort: { 'stats.totalGames': -1 }, limit: 10 })
+    .toArray()
+  return players.map(player => ({ player, count: player.stats.totalGames }))
+}
+
+async function getMostActiveMedics(): Promise<HallOfFameEntry[]> {
+  const players = await collections.players
+    .find(
+      { 'stats.gamesByClass.medic': { $gt: 0 } },
+      { sort: { 'stats.gamesByClass.medic': -1 }, limit: 10 },
+    )
+    .toArray()
+  return players.map(player => ({
+    player,
+    count: player.stats.gamesByClass[Tf2ClassName.medic] ?? 0,
+  }))
+}

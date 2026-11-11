@@ -1,0 +1,12 @@
+.worktrees
+.DS_Store
+node_modules
+.env
+*.code-workspace
+dist
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/tests/.auth/*
+!/tests/.auth/.gitkeep

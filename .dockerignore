@@ -1,0 +1,14 @@
+dist
+node_modules
+.editorconfig
+.git
+.gitignore
+.prettierignore
+.prettierrc
+eslint.config.js
+playwright.config.ts
+*.md
+.env
+.env.*
+!.env.example
+tests/.auth

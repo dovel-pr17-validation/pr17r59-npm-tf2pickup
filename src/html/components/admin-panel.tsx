@@ -1,0 +1,52 @@
+import type { Children } from '@kitajs/html'
+
+export function AdminPanel(props?: { children?: Children }) {
+  return (
+    <div class="container mx-auto grid grid-cols-1 gap-4 lg:grid-cols-5 lg:gap-8">
+      {props?.children}
+    </div>
+  )
+}
+
+export function AdminPanelSidebar(props?: { children?: Children }) {
+  return (
+    <div class="flex gap-1 max-lg:[scrollbar-width:none] max-lg:overflow-x-auto lg:flex-col">
+      {props?.children}
+      <script>{`
+        if (!window.matchMedia('(min-width: 64rem)').matches) {
+          document.currentScript.parentElement
+            .querySelector('.admin-panel-link.active')
+            ?.scrollIntoView({ block: 'nearest', inline: 'center' });
+        }
+      `}</script>
+    </div>
+  )
+}
+
+export function AdminPanelSection(props: { children: Children }) {
+  return <span class="admin-panel-section">{props.children}</span>
+}
+
+export function AdminPanelLink(props: { href: string; active?: boolean; children: Children }) {
+  return (
+    <a href={props.href} class={['admin-panel-link', props.active && 'active']}>
+      {props.children}
+    </a>
+  )
+}
+
+export function AdminPanelBody(props?: { children?: Children }) {
+  return <div class="lg:col-span-4">{props?.children}</div>
+}
+
+export function AdminPanelHeader(props?: { children?: Children }) {
+  return <h1 class="text-abru-light-75 mb-4 text-[32px]">{props?.children}</h1>
+}
+
+export function AdminPanelContent(props?: { children?: Children }) {
+  return <div class="bg-abru-dark-25 rounded-2xl p-8">{props?.children}</div>
+}
+
+export function AdminPanelGroup(props?: { children?: Children }) {
+  return <div class="bg-abru-light-5 rounded-lg">{props?.children}</div>
+}

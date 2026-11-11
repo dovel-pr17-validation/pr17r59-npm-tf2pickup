@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":pinAllExceptPeerDependencies", ":disableDependencyDashboard"],
+  "packageRules": [
+    {
+      "depTypeList": ["devDependencies"],
+      "automerge": true
+    },
+    {
+      "updateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "matchPackageNames": ["@tf2pickup-org/mumble-client"],
+      "minimumReleaseAge": null
+    }
+  ],
+  "automergeType": "branch",
+  "minimumReleaseAge": "3 days",
+  "labels": ["renovate"]
+}

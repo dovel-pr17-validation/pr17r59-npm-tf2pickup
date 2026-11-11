@@ -1,0 +1,36 @@
+@reference '../../../html/styles/main.css';
+
+@layer components {
+  .admin-panel-set {
+    background: var(--color-abru-dark-25);
+    border-radius: 16px;
+    padding: 24px;
+    color: var(--color-abru-light-50);
+
+    .form-checkbox {
+      margin-bottom: 16px;
+
+      label {
+        margin-left: 8px;
+      }
+
+      .description {
+        color: var(--color-abru-light-75);
+        font-size: 12px;
+        margin-left: 22px;
+      }
+    }
+  }
+
+  .cooldown-levels-list {
+    counter-reset: cooldown-level -1;
+  }
+
+  .cooldown-levels-list .cooldown-level-row {
+    counter-increment: cooldown-level;
+  }
+
+  .cooldown-levels-list .cooldown-level-index::before {
+    content: counter(cooldown-level);
+  }
+}
